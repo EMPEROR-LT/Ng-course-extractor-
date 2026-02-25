@@ -13,7 +13,7 @@ class Config:
         # Bot credentials
         self.BOT_TOKEN = os.getenv(
             "BOT_TOKEN",
-            "YOUR_BOT_TOKEN_HERE"
+            "8278402505:AAFMFzN27SzLAPhyj1BoWCCb_kmKJI352Ew"
         )
 
         # Search API credentials

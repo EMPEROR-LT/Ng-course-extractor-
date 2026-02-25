@@ -191,7 +191,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await handle_action_callbacks(query, user_id, data)
         elif data.startswith("search_"):
             await handle_search_callbacks(query, user_id, data)
-        elif data.startswith("result_"):
+        elif data.startswith("result_") or data.startswith("open_") or data.startswith("copy_") or data.startswith("share_"):
             await handle_result_callbacks(query, user_id, data)
         elif data.startswith("fav_"):
             await handle_favorite_callbacks(query, user_id, data)
@@ -325,9 +325,10 @@ async def handle_result_callbacks(query, user_id: int, data: str):
     if len(action_parts) < 2:
         return
 
+    prefix = action_parts[0]
     action = action_parts[1]
 
-    if action.isdigit():
+    if prefix == "result" and action.isdigit():
         # Show result details
         result_index = int(action)
         results = user_search_results[user_id]['results']
@@ -341,6 +342,23 @@ async def handle_result_callbacks(query, user_id: int, data: str):
                 reply_markup=keyboards.result_details(result_index),
                 parse_mode='Markdown'
             )
+
+    elif prefix == "open" and action.isdigit():
+        result_index = int(action)
+        results = user_search_results[user_id]['results']
+        if 0 <= result_index < len(results):
+            url = results[result_index].get('link', '')
+            await query.answer(f"Opening link: {url}")
+            # In a real bot, you might just send the link or use an external URL
+            await query.message.reply_text(f"🔗 Here is your link:\n{url}")
+
+    elif prefix == "copy" and action.isdigit():
+        result_index = int(action)
+        results = user_search_results[user_id]['results']
+        if 0 <= result_index < len(results):
+            url = results[result_index].get('link', '')
+            await query.answer("Link copied to clipboard!")
+            await query.message.reply_text(f"📋 Link for copying:\n`{url}`", parse_mode='Markdown')
 
 async def handle_favorite_callbacks(query, user_id: int, data: str):
     """Handle favorite-related callbacks"""
@@ -373,8 +391,20 @@ async def handle_favorite_callbacks(query, user_id: int, data: str):
     elif action == "add" and len(action_parts) > 2:
         # Add specific result to favorites
         result_index = int(action_parts[2])
-        # Implementation similar to above
-        pass
+        if user_id in user_search_results:
+            results = user_search_results[user_id]['results']
+            if 0 <= result_index < len(results):
+                result = results[result_index]
+                success = db.add_favorite(
+                    user_id=user_id,
+                    title=result.get('title', 'Untitled'),
+                    url=result.get('link', ''),
+                    platform=result.get('platform', 'Unknown')
+                )
+                if success:
+                    await query.answer("⭐ Added to favorites!")
+                else:
+                    await query.answer("Already in favorites!")
 
     elif action == "clear":
         # Show confirmation dialog
@@ -506,8 +536,9 @@ async def handle_back_callbacks(query, user_id: int, data: str):
     destination = data.replace("back_", "")
 
     if destination == "main":
+        user = query.from_user
         welcome_text = formatter.format_welcome_message(
-            update.effective_user.first_name or "there"
+            user.first_name or "there"
         )
 
         await query.edit_message_text(

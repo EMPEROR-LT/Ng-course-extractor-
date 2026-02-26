@@ -81,6 +81,12 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Enhanced search message handler with progress tracking"""
     try:
+        # Simple memory management
+        if len(user_search_results) > 100:
+            user_search_results.clear()
+        if len(user_search_states) > 100:
+            user_search_states.clear()
+
         user_id = update.effective_user.id
         query = update.message.text.strip()
 
@@ -121,10 +127,22 @@ async def search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_settings = db.get_user_settings(user_id)
         max_results = user_settings.get('results_per_page', config.MAX_RESULTS_PER_PAGE)
 
+        # Check for platform-specific search preference
+        platform = None
+        if user_id in user_search_states:
+            state = user_search_states[user_id]
+            if state.get('waiting_for_query'):
+                search_type = state.get('type')
+                if search_type in ['drive', 'mediafire', 'mega']:
+                    platform = f"{search_type}.com" if search_type != 'mega' else "mega.nz"
+                # Clear state after use
+                del user_search_states[user_id]
+
         # Perform search
         try:
             results, total_found = await search_engine.search_courses(
                 query=query,
+                platform=platform,
                 max_results=max_results,
                 progress_callback=progress.update
             )
@@ -199,6 +217,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await handle_history_callbacks(query, user_id, data)
         elif data.startswith("setting_"):
             await handle_setting_callbacks(query, user_id, data)
+        elif data.startswith("search_export"):
+            await handle_search_export(query, user_id)
         elif data.startswith("back_"):
             await handle_back_callbacks(query, user_id, data)
         elif data.startswith("page_"):
@@ -349,7 +369,6 @@ async def handle_result_callbacks(query, user_id: int, data: str):
         if 0 <= result_index < len(results):
             url = results[result_index].get('link', '')
             await query.answer(f"Opening link: {url}")
-            # In a real bot, you might just send the link or use an external URL
             await query.message.reply_text(f"🔗 Here is your link:\n{url}")
 
     elif prefix == "copy" and action.isdigit():
@@ -359,6 +378,17 @@ async def handle_result_callbacks(query, user_id: int, data: str):
             url = results[result_index].get('link', '')
             await query.answer("Link copied to clipboard!")
             await query.message.reply_text(f"📋 Link for copying:\n`{url}`", parse_mode='Markdown')
+
+    elif prefix == "share" and action.isdigit():
+        result_index = int(action)
+        results = user_search_results[user_id]['results']
+        if 0 <= result_index < len(results):
+            result = results[result_index]
+            url = result.get('link', '')
+            title = result.get('title', 'Course')
+            share_text = f"Check out this course: {title}\n\nLink: {url}"
+            await query.answer("Share text generated!")
+            await query.message.reply_text(f"📤 Share this message:\n\n{share_text}")
 
 async def handle_favorite_callbacks(query, user_id: int, data: str):
     """Handle favorite-related callbacks"""
@@ -405,6 +435,37 @@ async def handle_favorite_callbacks(query, user_id: int, data: str):
                     await query.answer("⭐ Added to favorites!")
                 else:
                     await query.answer("Already in favorites!")
+
+    elif action == "open" and len(action_parts) > 2:
+        fav_index = int(action_parts[2])
+        favorites = db.get_favorites(user_id)
+        if 0 <= fav_index < len(favorites):
+            url = favorites[fav_index].get('url', '')
+            await query.answer(f"Opening favorite: {url}")
+            await query.message.reply_text(f"⭐ Favorite Link:\n{url}")
+
+    elif action == "del" and len(action_parts) > 2:
+        fav_index = int(action_parts[2])
+        favorites = db.get_favorites(user_id)
+        if 0 <= fav_index < len(favorites):
+            fav_id = favorites[fav_index].get('id')
+            if db.remove_favorite(fav_id):
+                await query.answer("🗑️ Removed from favorites")
+                updated_favorites = db.get_favorites(user_id)
+                await query.edit_message_text(
+                    formatter.format_favorites_list(updated_favorites),
+                    reply_markup=keyboards.favorites_menu(updated_favorites),
+                    parse_mode='Markdown'
+                )
+
+    elif action == "page" and len(action_parts) > 2:
+        new_page = int(action_parts[2])
+        favorites = db.get_favorites(user_id)
+        await query.edit_message_text(
+            formatter.format_favorites_list(favorites),
+            reply_markup=keyboards.favorites_menu(favorites, page=new_page),
+            parse_mode='Markdown'
+        )
 
     elif action == "clear":
         # Show confirmation dialog
@@ -493,6 +554,36 @@ async def handle_history_callbacks(query, user_id: int, data: str):
             parse_mode='Markdown'
         )
 
+    elif action == "export":
+        history = db.get_search_history(user_id)
+        from bot.utils import ExportUtils
+        export_text = ExportUtils.export_history_text(history)
+
+        await query.edit_message_text(
+            f"📤 **History Export**\n\n```\n{export_text}\n```",
+            reply_markup=keyboards.back_button(),
+            parse_mode='Markdown'
+        )
+
+async def handle_search_export(query, user_id: int):
+    """Handle search results export"""
+    if user_id not in user_search_results:
+        await query.answer("No search results to export")
+        return
+
+    results = user_search_results[user_id]['results']
+    query_text = user_search_results[user_id]['query']
+
+    export_text = f"Search Export for: {query_text}\n\n"
+    for i, res in enumerate(results, 1):
+        export_text += f"{i}. {res.get('title')}\n   Link: {res.get('link')}\n\n"
+
+    await query.edit_message_text(
+        f"📤 **Search Export**\n\n```\n{export_text}\n```",
+        reply_markup=keyboards.back_button(),
+        parse_mode='Markdown'
+    )
+
 async def handle_setting_callbacks(query, user_id: int, data: str):
     """Handle settings callbacks"""
     setting = data.replace("setting_", "")
@@ -514,6 +605,30 @@ async def handle_setting_callbacks(query, user_id: int, data: str):
             reply_markup=keyboards.settings_menu(current_settings),
             parse_mode='Markdown'
         )
+
+    elif setting == "reset":
+        db.update_user_settings(user_id, {})
+        await query.answer("Settings reset to defaults")
+        # Refresh
+        settings = db.get_user_settings(user_id)
+        await query.edit_message_text(
+            formatter.format_settings_display(settings),
+            reply_markup=keyboards.settings_menu(settings),
+            parse_mode='Markdown'
+        )
+
+    elif setting == "export":
+        settings = db.get_user_settings(user_id)
+        import json
+        settings_json = json.dumps(settings, indent=2)
+        await query.edit_message_text(
+            f"📤 **Settings Export**\n\n```json\n{settings_json}\n```",
+            reply_markup=keyboards.back_button(),
+            parse_mode='Markdown'
+        )
+
+    elif "info" in setting:
+        await query.answer("Bot Settings Menu")
 
     elif setting == "notifications":
         current_value = current_settings.get('notifications', True)
@@ -611,6 +726,17 @@ async def show_user_stats(query, user_id: int):
         total_results_found = sum(h.get('results_count', 0) for h in history)
         avg_results = total_results_found / max(total_searches, 1)
 
+        # Get registration date and last activity
+        user_data = db.get_user_info(user_id)
+        member_since = user_data.get('created_at', 'Unknown')
+        if member_since != 'Unknown':
+            try:
+                member_since = member_since.split()[0] # Just the date
+            except:
+                pass
+
+        last_search = history[0].get('timestamp', 'None').split()[0] if history else 'None'
+
         stats_text = f"""
 📊 **Your Bot Statistics**
 
@@ -623,8 +749,8 @@ async def show_user_stats(query, user_id: int):
 • Saved favorites: **{total_favorites}**
 
 **📅 Activity:**
-• Member since: **Registration date**
-• Last search: **Recent activity**
+• Member since: **{member_since}**
+• Last search: **{last_search}**
 
 **🏆 Achievement:**
 {'🥇 Power User!' if total_searches > 50 else '🚀 Getting Started!' if total_searches > 10 else '👋 New User!'}

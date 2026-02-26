@@ -80,6 +80,27 @@ Alternatively, if running as a Task, you can set them in the command.
    ```
    *Note: The bot will stop if the console is closed or the server restarts.*
 
+## Deployment on Render
+
+### 1. Blueprint Deployment (Recommended)
+1. Fork this repository to your GitHub account.
+2. Go to [Render Dashboard](https://dashboard.render.com/).
+3. Click **New +** and select **Blueprint**.
+4. Connect your GitHub repository.
+5. Render will automatically detect the `render.yaml` file.
+6. Enter your `BOT_TOKEN` and `SERPAPI_KEY` in the environment variables section.
+7. Click **Deploy**.
+
+### 2. Manual Web Service Deployment
+1. Create a new **Web Service**.
+2. Build Command: `pip install -r requirements.txt`
+3. Start Command: `python main.py`
+4. Add Environment Variables:
+   - `RENDER`: `true`
+   - `BOT_TOKEN`: `your_telegram_bot_token`
+   - `SERPAPI_KEY`: `your_serpapi_key`
+   - `PYTHON_VERSION`: `3.11.0` (or higher)
+
 ## Configuration
 
 The bot configuration is managed in `bot/config.py`. It uses environment variables:

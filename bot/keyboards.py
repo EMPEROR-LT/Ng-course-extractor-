@@ -85,7 +85,7 @@ class BotKeyboards:
         keyboard.extend([
             [
                 InlineKeyboardButton("🔍 New Search", callback_data="action_search"),
-                InlineKeyboardButton("📋 Export All", callback_data="export_results")
+                InlineKeyboardButton("📋 Export All", callback_data="search_export")
             ],
             [
                 InlineKeyboardButton("« Back to Menu", callback_data="back_main")

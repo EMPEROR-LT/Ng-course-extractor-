@@ -13,13 +13,13 @@ class Config:
         # Bot credentials
         self.BOT_TOKEN = os.getenv(
             "BOT_TOKEN",
-            "8278402505:AAFMFzN27SzLAPhyj1BoWCCb_kmKJI352Ew"
+            "YOUR_BOT_TOKEN_HERE"
         )
 
         # Search API credentials
         self.SERPAPI_KEY = os.getenv(
             "SERPAPI_KEY",
-            "fe8b5094a55aea7b66e2465a2dffb9075d579b01e5c172dd1848d9a2eb2ef634"
+            "YOUR_SERPAPI_KEY_HERE"
         )
 
         # Developer info (encoded)

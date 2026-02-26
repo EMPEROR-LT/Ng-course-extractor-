@@ -7,6 +7,8 @@ Main entry point for the application
 import asyncio
 import logging
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 
 from bot.config import Config
@@ -23,6 +25,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+    def log_message(self, format, *args):
+        return  # Suppress logs for health checks
+
+def run_health_check_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    logger.info(f"Health check server started on port {port}")
+    server.serve_forever()
+
 async def error_handler(update, context):
     """Log errors and send user-friendly messages"""
     logger.error(f"Update {update} caused error {context.error}")
@@ -35,6 +52,10 @@ async def error_handler(update, context):
 
 def main():
     """Main function to start the bot"""
+    # Start health check server for Render
+    if os.environ.get("RENDER"):
+        threading.Thread(target=run_health_check_server, daemon=True).start()
+
     # Initialize configuration
     config = Config()
 

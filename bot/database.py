@@ -95,6 +95,20 @@ class Database:
             if conn:
                 conn.close()
 
+    def get_user_info(self, user_id: int) -> Dict:
+        """Get user information"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT * FROM users WHERE user_id = ?
+                ''', (user_id,))
+                row = cursor.fetchone()
+                return dict(row) if row else {}
+        except Exception as e:
+            logger.error(f"Failed to get user info for {user_id}: {e}")
+            return {}
+
     def add_or_update_user(self, user_id: int, username: str = None,
                           first_name: str = None, last_name: str = None):
         """Add or update user information"""
@@ -185,7 +199,7 @@ class Database:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    SELECT title, url, platform, added_at
+                    SELECT id, title, url, platform, added_at
                     FROM favorites
                     WHERE user_id = ?
                     ORDER BY added_at DESC
@@ -196,20 +210,20 @@ class Database:
             logger.error(f"Failed to get favorites for user {user_id}: {e}")
             return []
 
-    def remove_favorite(self, user_id: int, url: str) -> bool:
-        """Remove link from favorites"""
+    def remove_favorite(self, favorite_id: int) -> bool:
+        """Remove link from favorites by ID"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     DELETE FROM favorites
-                    WHERE user_id = ? AND url = ?
-                ''', (user_id, url))
+                    WHERE id = ?
+                ''', (favorite_id,))
 
                 conn.commit()
                 return cursor.rowcount > 0
         except Exception as e:
-            logger.error(f"Failed to remove favorite for user {user_id}: {e}")
+            logger.error(f"Failed to remove favorite ID {favorite_id}: {e}")
             return False
 
     def check_rate_limit(self, user_id: int, limit: int = 10, window: int = 60) -> bool:

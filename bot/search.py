@@ -4,7 +4,7 @@ Handles course link searching with progress tracking and error handling
 """
 
 import asyncio
-import requests
+import httpx
 import logging
 from typing import List, Dict, Optional, Tuple
 from urllib.parse import urlparse, parse_qs
@@ -20,10 +20,9 @@ class SearchEngine:
 
     def __init__(self):
         self.config = Config()
-        self.session = requests.Session()
-        self.session.headers.update({
+        self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
+        }
 
     async def search_courses(self, query: str, platform: str = None,
                            max_results: int = None, progress_callback=None) -> Tuple[List[Dict], int]:
@@ -122,15 +121,14 @@ class SearchEngine:
             if progress_callback:
                 await progress_callback("🌐 Querying search engine...")
 
-            # Make search request
-            response = self.session.get(
-                "https://serpapi.com/search",
-                params=params,
-                timeout=30
-            )
-            response.raise_for_status()
-
-            data = response.json()
+            # Make search request using httpx
+            async with httpx.AsyncClient(headers=self.headers, timeout=30.0) as client:
+                response = await client.get(
+                    "https://serpapi.com/search",
+                    params=params
+                )
+                response.raise_for_status()
+                data = response.json()
 
             if progress_callback:
                 await progress_callback("📋 Parsing results...")
@@ -144,7 +142,7 @@ class SearchEngine:
             # Also check related searches and people also ask
             await self._process_additional_results(data, all_results, progress_callback)
 
-        except requests.exceptions.RequestException as e:
+        except httpx.HTTPError as e:
             logger.error(f"Search API request failed: {e}")
             raise Exception(f"Search service unavailable: {e}")
         except Exception as e:
